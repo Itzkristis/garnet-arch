@@ -1,0 +1,9 @@
+diff --git a/drivers/extcon/Makefile b/drivers/extcon/Makefile
+index 52096fd8a..79203363f 100644
+--- a/drivers/extcon/Makefile
++++ b/drivers/extcon/Makefile
+@@ -25,3 +25,4 @@ obj-$(CONFIG_EXTCON_RT8973A)	+= extcon-rt8973a.o
+ obj-$(CONFIG_EXTCON_SM5502)	+= extcon-sm5502.o
+ obj-$(CONFIG_EXTCON_USB_GPIO)	+= extcon-usb-gpio.o
+ obj-$(CONFIG_EXTCON_USBC_CROS_EC) += extcon-usbc-cros-ec.o
++obj-m += extcon-fake-vbus.o

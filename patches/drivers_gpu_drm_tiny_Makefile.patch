@@ -1,0 +1,9 @@
+diff --git a/drivers/gpu/drm/tiny/Makefile b/drivers/gpu/drm/tiny/Makefile
+index 6ae4e9e5a..dfd240812 100644
+--- a/drivers/gpu/drm/tiny/Makefile
++++ b/drivers/gpu/drm/tiny/Makefile
+@@ -10,3 +10,4 @@ obj-$(CONFIG_TINYDRM_MI0283QT)		+= mi0283qt.o
+ obj-$(CONFIG_TINYDRM_REPAPER)		+= repaper.o
+ obj-$(CONFIG_TINYDRM_ST7586)		+= st7586.o
+ obj-$(CONFIG_TINYDRM_ST7735R)		+= st7735r.o
++obj-$(CONFIG_DRM_SIMPLEDRM)		+= simpledrm.o

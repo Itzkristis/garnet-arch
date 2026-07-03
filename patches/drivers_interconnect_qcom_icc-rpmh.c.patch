@@ -1,0 +1,26 @@
+diff --git a/drivers/interconnect/qcom/icc-rpmh.c b/drivers/interconnect/qcom/icc-rpmh.c
+index dda4b8f9c..6a5f8df3b 100644
+--- a/drivers/interconnect/qcom/icc-rpmh.c
++++ b/drivers/interconnect/qcom/icc-rpmh.c
+@@ -324,9 +324,18 @@ static struct regmap *qcom_icc_rpmh_map(struct platform_device *pdev,
+ 
+ static bool is_voter_disabled(char *voter)
+ {
+-	if ((!strcmp(voter, "disp") && socinfo_get_part_info(PART_DISPLAY)) ||
+-	    (!strcmp(voter, "disp2") && socinfo_get_part_info(PART_DISPLAY1)) ||
+-	    (strnstr(voter, "cam", strlen(voter)) && socinfo_get_part_info(PART_CAMERA)))
++	/*
++	 * garnet bring-up: force-disable the display voters. The display RSC
++	 * (rsc@af20000) never probes here, so its "disp"/"disp2" bcm-voter is
++	 * absent, which made mc_virt/gem_noc/mmss_noc fail to register -> that
++	 * blocked UFS (needs mc_virt+gem_noc) and the apps SMMU. We don't use
++	 * display bandwidth voting; the driver's disabled-voter path is NULL-safe
++	 * and skips them cleanly.
++	 */
++	if (!strcmp(voter, "disp") || !strcmp(voter, "disp2"))
++		return true;
++
++	if (strnstr(voter, "cam", strlen(voter)) && socinfo_get_part_info(PART_CAMERA))
+ 		return true;
+ 
+ 	return false;
