@@ -1,1 +1,34 @@
+# Reference reconstruction of the on-device unit (from status.md/handoff.md).
+# Brings up the USB device-mode NCM gadget -> the PC gets a DHCP lease from the
+# phone -> `ssh root@172.16.42.1`.
+#
+# The crash saga this encodes (5 root causes, all paid for in reboots):
+#  1. Load ONLY the phy/dwc3 modules, in strict order (phys -> fake-vbus ->
+#     dwc3-msm). udev coldplug of these 4 in arbitrary order crashed the SoC, so
+#     they are udev-BLACKLISTED (see garnet-modprobe-blacklist.conf).
+#  2. NEVER start the role via dwc3-msm's sysfs `mode` (NULL workqueue oops ->
+#     TZ crashdump). Feed a cable event via extcon instead.
+#  3/4. Retail EUD never sends an extcon event, and dwc3-msm blackholes extcon
+#     names containing "eud". extcon-fake-vbus.ko registers on a child pdev named
+#     fake_vbus.0 (clean name, of_node still = the EUD node) reporting EXTCON_USB=1.
+#
+# Runs at multi-user + a short delay, strictly sequential.
+[Unit]
+Description=garnet USB NCM gadget (ssh over USB)
+After=multi-user.target
 
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Strict order — do NOT let udev load these (blacklisted):
+ExecStart=/sbin/modprobe phy-msm-snps-hs
+ExecStart=/sbin/modprobe phy-msm-ssusb-qmp
+ExecStart=/sbin/modprobe extcon-fake-vbus
+ExecStart=/sbin/modprobe dwc3-msm
+# extcon-fake-vbus reports the cable; dwc3-msm starts the peripheral role itself.
+# Then assemble the configfs gadget (g1: NCM ethernet usb0) and bind the UDC.
+# (Full configfs assembly script lives on the rootfs; see handoff.md.)
+ExecStart=/usr/local/sbin/garnet-usb-gadget-up.sh
+
+[Install]
+WantedBy=multi-user.target
