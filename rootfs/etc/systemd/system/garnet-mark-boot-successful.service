@@ -1,0 +1,13 @@
+# Marks slot B "successful" (GPT attribute bit 54 on boot_b) once per boot so
+# the bootloader stops burning the A/B retry counter — see the script header.
+# Needs gptfdisk (sgdisk) installed on the rootfs.
+[Unit]
+Description=garnet: mark slot B boot successful (stop A/B retry countdown)
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/garnet-mark-boot-successful.sh
+
+[Install]
+WantedBy=multi-user.target

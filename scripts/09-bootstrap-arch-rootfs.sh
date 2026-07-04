@@ -48,6 +48,7 @@ sudo chroot "$MNT" /bin/bash -c '
   passwd -d root                         # empty root pw for console login
   systemctl enable systemd-networkd systemd-resolved
   systemctl enable garnet-wifi-fw.service garnet-usb-gadget.service
+  systemctl enable garnet-mark-boot-successful.service   # needs gptfdisk (pacman -S once online)
   systemctl enable wpa_supplicant@wlan0
   systemd-machine-id-setup
 ' || echo "[=] chroot step needs binfmt/qemu-aarch64 on the host if it failed here"

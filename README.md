@@ -110,10 +110,13 @@ build this 5.10 tree.
    Android stays intact on slot A — you can always `fastboot set_active a` to
    go back.
 3. **Know the retry-counter gotcha:** every power-on of slot B decrements an
-   A/B retry counter (it starts at 7), and nothing ever marks the boot as
-   successful. When it hits zero the phone silently falls back to slot A. The
-   fix is simply re-running `fastboot set_active b` — do it after every flash
-   session and you'll never be surprised.
+   A/B retry counter (it starts at 7), and the bootloader only stops counting
+   once the slot's GPT "successful" bit is set — which nothing does until
+   Linux is installed. When it hits zero the phone silently falls back to
+   slot A. Until Step 5 is done, re-run `fastboot set_active b` after every
+   flash session; after that, `garnet-mark-boot-successful.service` (installed
+   by the `09` bootstrap) sets the bit on every boot and the countdown stops
+   for good.
 
 ### Step 2 — clone the upstream sources
 
@@ -348,8 +351,10 @@ lab notebook — start there, not in the driver's logs.
 - **Mu-Silicium mass-storage mode is your best friend** — it exposes the whole
   UFS, so you edit the ESP directly and read boot logs back; no fastboot
   round-trips.
-- **Re-arm slot B** (`fastboot set_active b`) after every flash session — see
-  Step 1.
+- **The A/B retry countdown is stopped by the GPT "successful" bit** (bit 54
+  on `boot_b`'s entry) — `garnet-mark-boot-successful.service` sets it every
+  boot. `fastboot set_active b` clears it, so the service matters after every
+  flash session; before Linux is installed, re-arm by hand (see Step 1).
 
 ---
 
@@ -364,8 +369,8 @@ lab notebook — start there, not in the driver's logs.
   `gpu_cc`/GPU GDSCs re-enabled (currently disabled by the reset-fix DTB),
   Adreno SQE/GMU firmware + zap shader extracted from the phone, and a
   community A710 turnip build. Full plan in the lab notebook.
-- **Durability**: automate the slot-B re-arm, `fsck.vfat` the ESP, trim the
-  initramfs module set.
+- **Durability**: `fsck.vfat` the ESP, trim the initramfs module set. (The
+  slot-B re-arm is automated now — `garnet-mark-boot-successful.service`.)
 
 ---
 

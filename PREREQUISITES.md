@@ -42,9 +42,12 @@ pulls it from your own device over Mu-Silicium mass-storage mode.
 - ~30 GB free disk for kernel + modules + rootfs staging.
 
 ## A/B slot gotcha
-Every power-on decrements slot B's retry counter (starts at 7); nothing marks
-success, so re-arm periodically: `fastboot set_active b`
-(`fastboot getvar slot-retry-count:b` to check).
+Every power-on decrements slot B's retry counter (starts at 7) until the
+slot's GPT "successful" bit is set; at zero the phone silently falls back to
+slot A. Once the rootfs is installed, `garnet-mark-boot-successful.service`
+sets the bit on every boot and the countdown stops. Before that — and right
+after any `fastboot set_active b`, which clears the bit — re-arm by hand:
+`fastboot set_active b` (`fastboot getvar slot-retry-count:b` to check).
 
 ## The only outputs (in `../dist/`, rebuildable by the scripts)
 `grubaa64.efi`, `Image`/`Image-vt`, `garnet-sm7435.dtb` +
