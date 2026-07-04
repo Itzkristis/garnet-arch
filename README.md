@@ -252,6 +252,81 @@ GPU-renders/CPU-scanout machine. Don't read too much into glxgears numbers;
 tiny gears are cheaper to draw on a CPU than to copy out of a GPU — the win
 shows up in real shader work at real resolutions.)
 
+### Is it actually accelerated? Measuring it
+
+"Hardware accelerated" means the Adreno 710 is drawing the pixels, not the CPU
+(llvmpipe, the software rasteriser). You don't guess from how it looks — you
+read three independent signals:
+
+1. **The renderer string** (the app names its GL renderer):
+   - GL apps: `glxinfo -B | grep -i "OpenGL renderer"` → `zink Vulkan …
+     Turnip Adreno (TM) 710` (hardware) vs `llvmpipe` (software).
+   - Firefox: `about:support` → **"WebGL 2 Driver Renderer"**.
+2. **The GPU busy counters** (the un-fakeable one):
+   ```bash
+   watch -n0.5 'cat /sys/class/kgsl/kgsl-3d0/gpu_busy_percentage \
+                    /sys/class/kgsl/kgsl-3d0/clock_mhz'
+   ```
+   Climbing % and the clock jumping toward **940 MHz** = the GPU is working.
+   Stuck at `0 % / 345 MHz` while something renders = it's all on the CPU.
+3. **The CPU reaction** — `top`/`htop`: software rendering pins all 8 cores;
+   hardware offloads them.
+
+**To compare, run the same workload twice and flip the driver** — hardware
+(`MESA_LOADER_DRIVER_OVERRIDE=zink`) vs software (`LIBGL_ALWAYS_SOFTWARE=1`):
+
+```bash
+# Hardware (turnip + zink):
+gpu-env glmark2
+# Software (llvmpipe), same scenes:
+LIBGL_ALWAYS_SOFTWARE=1 DISPLAY=:0 glmark2
+```
+
+`glmark2` prints a single score. Measured on this phone (five representative
+scenes, fbdev Xorg):
+
+| Scene | Hardware (turnip/zink) | Software (llvmpipe) | GPU speedup |
+|---|---|---|---|
+| build | 269 FPS | 177 FPS | 1.5× |
+| texture | 262 FPS | 226 FPS | 1.2× |
+| shading | 258 FPS | 140 FPS | 1.8× |
+| **refract** | **75 FPS** | **15 FPS** | **5.0×** |
+| **glmark2 Score** | **225** | **156** | **1.4× overall** |
+
+Read the *pattern*, not just the overall score. Simple fills (`texture`,
+`bump`) barely differ — llvmpipe on 8 fast cores keeps up. Shader-heavy scenes
+are where the GPU pulls away (`refract` **5×**), and a brutal fragment shader
+like [volumeshader.com](https://volumeshader.com/run/) pegs the GPU at
+100 %/940 MHz where llvmpipe would crawl. The overall gap is "only" 1.4×
+because every frame is a fixed-cost CPU copy to the framebuffer (no scanout),
+which blunts the lead on the cheap scenes.
+
+### What's accelerated and what isn't (the honest map)
+
+There is **no DRM/KMS display driver** on this SoC (drm/msm has no gen7 support
+on 5.10) — only `simpledrm`/fbdev, a dumb framebuffer. That single fact decides
+everything:
+
+- ✅ **GL/Vulkan apps under Xorg** (`gpu-env <app>`): fully accelerated. Firefox
+  WebGL, glmark2, emulators, `mpv --vo=gpu` scaling — the GPU does the work,
+  one CPU copy reaches the screen.
+- ✅ **Headless Vulkan / compute** (`vulkaninfo`, llama.cpp's Vulkan backend):
+  works with no display path at all.
+- ❌ **sway and native Wayland apps**: **software (llvmpipe).** wlroots' GL
+  renderer needs EGL + **GBM**, and its Vulkan renderer needs
+  `VK_EXT_physical_device_drm` — both require a DRM render node, which KGSL is
+  not. So the compositor and Wayland-native apps composite on CPU. This is why
+  Firefox launched from sway shows `llvmpipe` in `about:support`, while the
+  same Firefox under Xorg+`gpu-env` is accelerated.
+- ➖ **foot / terminals**: CPU by nature (text rasterisation) — the GPU
+  wouldn't help regardless.
+
+So today the accelerated-desktop path is **Xorg + a WM + `gpu-env`**, not sway.
+Making sway itself GPU-composited is the big open item — it needs either a real
+KMS driver for the SM7435 display, or a wlroots renderer patched to use turnip
+without a DRM device and present via a CPU copy to `simpledrm`. Neither is a
+quick fix; both are tracked in the roadmap.
+
 ---
 
 ## Touchscreen — the phone becomes self-contained
@@ -366,6 +441,13 @@ The blit now clamps the clip and walks src/dst with separate pitches.
   ideas: patch wlroots' Vulkan renderer to accept a DRM-less device, or keep
   the compositor on CPU and run the heavy apps on GL-via-zink / Vulkan
   directly (works today under Xorg).
+- **Audio**: nothing plays yet. The SM7435 audio path is the Qualcomm
+  ASoC/LPASS + q6 (ADSP) stack with the vendor `snd-soc-*` modules — likely the
+  highest-value next milestone (turns this into a media-capable device), and
+  fiddly for the usual Qualcomm reasons.
+- **Camera**: hard. Qualcomm CAMSS/CamX is proprietary and heavy; low priority.
+- **Wi-Fi stability**: the link occasionally drops (`No route to host` for a
+  few seconds) — probably qcacld power-save; worth pinning down.
 - **Durability**: `fsck.vfat` the ESP, trim the initramfs module set. (The
   slot-B re-arm is automated now — `garnet-mark-boot-successful.service`.)
 
