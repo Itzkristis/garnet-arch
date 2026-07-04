@@ -1,7 +1,7 @@
 # GRUB config for garnet (ESP root /grub.cfg). Edit freely; no rebuild needed.
 # Volume keys should move the selection, power = enter (Mu-Silicium key mapping).
 set timeout=5
-set default=9
+set default=12
 
 menuentry '0 DIAG: dump previous-boot ramoops crash log (no modules)' {
     devicetree /garnet-sm7435.dtb
@@ -79,4 +79,16 @@ menuentry '11 USB TEST (initramfs only, breadcrumbed, no Arch)' {
     devicetree /garnet-sm7435-nommgdsc.dtb
     linux /Image-vt earlycon=efifb keep_bootcon console=tty0 loglevel=7 fw_devlink=permissive consoleblank=0
     initrd /initramfs-usbtest.gz
+}
+
+# GPU bring-up: same boot as 10, but the DTB re-enables the two GPU GDSC nodes
+# (gpu_cc_cx_gdsc @3d99108, gpu_cc_gx_gdsc @3d9905c; other 5 mm GDSCs stay off).
+# gdsc-regulator RMWs their GDSCRs at boot (survivable per milestone-2 analysis;
+# the 11 s reset was the LIVE display GDSC, and these lack proxy-consumer-enable).
+# kgsl/gpucc modules are staged in /lib/modules/$KV/gpu/ but BLACKLISTED —
+# load manually: modprobe gpucc-parrot, then modprobe msm_kgsl.
+menuentry "12 ARCH + GPU GDSCs enabled (kgsl bring-up)" {
+    devicetree /garnet-sm7435-gpu.dtb
+    linux /Image-vt earlycon=efifb keep_bootcon console=tty0 loglevel=7 fw_devlink=permissive consoleblank=0
+    initrd /initramfs-switch.gz
 }

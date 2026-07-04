@@ -27,6 +27,9 @@ sudo cp -v "$DIST/grubaa64.efi"                "$MNT/EFI/BOOT/BOOTAA64.EFI"
 sudo cp -v "$DIST/Image-vt"                    "$MNT/Image"
 sudo cp -v "$DIST/garnet-sm7435.dtb"           "$MNT/garnet-sm7435.dtb"
 sudo cp -v "$DIST/garnet-sm7435-nommgdsc.dtb"  "$MNT/garnet-sm7435-nommgdsc.dtb"
+# GPU DTB (script 10) — optional; GRUB entry 12 boots it:
+[ -f "$DIST/garnet-sm7435-gpu.dtb" ] && \
+  sudo cp -v "$DIST/garnet-sm7435-gpu.dtb"     "$MNT/garnet-sm7435-gpu.dtb"
 sudo cp -v "$DIST/grub.cfg"                    "$MNT/grub.cfg"
 # ship whichever initramfs images your grub.cfg entries reference:
 for f in initramfs-switch.gz initramfs.gz initramfs-arch.gz; do

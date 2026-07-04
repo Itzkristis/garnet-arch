@@ -29,6 +29,7 @@ booting phone. If you get stuck, the entire debugging saga is preserved in
 | 5 | **Wi-Fi** — WPA2, DHCP, internet on `wlan0` (VHT80 MCS9, 866 Mbit) | ✅ |
 | 6 | USB **host mode** — xhci comes up, a keyboard enumerates. Software done; needs a **powered OTG hub** because the phone can't source 5 V | 🚧 |
 | 7 | **Desktop on the phone screen** — X11 + i3 on efifb, and a backported **simpledrm** giving `/dev/dri/card0` → **sway (Wayland)** | ✅ |
+| 8 | **GPU acceleration** — the Adreno 710 executes Vulkan via **turnip on KGSL**, and **OpenGL 4.6 via zink**; glxgears runs GPU-rendered on the phone screen under Xorg | ✅ |
 
 A few hardware facts to orient you: garnet is an A/B device, Mu-Silicium lives
 on **slot B** (`boot_b`), and the kernel is LineageOS's downstream
@@ -245,6 +246,20 @@ Note: `seatd`, the alarm user's groups, and `loginctl enable-linger alarm` are
 already set up by the `09` bootstrap — don't disable linger, or logind wipes
 `/run/user/1000` (and sway's socket with it) when the last login exits.
 
+### Step 8 — GPU acceleration (optional but glorious)
+
+Three commands, all detailed in the GPU section below:
+
+```bash
+./scripts/10-make-gpu-dtb.sh          # on the host: DTB with GPU domains enabled
+# copy dist/garnet-sm7435-gpu.dtb to the ESP, point a GRUB entry at it, boot it
+./scripts/11-extract-gpu-firmware.sh  # on the phone: a710 firmware from /vendor
+# then build Mesa on the phone (see "GPU acceleration — turnip on KGSL")
+```
+
+`garnet-gpu.service` (installed by `09`) loads the kernel side at every boot;
+it no-ops on non-GPU DTBs.
+
 ---
 
 ## The three kernel patches (why the tree is `-dirty`)
@@ -337,6 +352,64 @@ lab notebook — start there, not in the driver's logs.
 
 ---
 
+## GPU acceleration — turnip on KGSL
+
+The Adreno 710 now runs real work. Since the 5.10 downstream kernel has no
+drm/msm (and never will for this SoC), the route is the one Android
+custom-driver folks use: **Mesa turnip (Vulkan) talking straight to
+`/dev/kgsl-3d0`**, with **zink** translating OpenGL onto it. freedreno's
+GL driver was never an option — it needs drm/msm.
+
+Four pieces had to line up:
+
+1. **A DTB that powers the GPU** (`scripts/10-make-gpu-dtb.sh`). The reset-fix
+   DTB disabled all 7 multimedia GDSC nodes; the GPU pair
+   (`gpu_cc_cx_gdsc`/`gpu_cc_gx_gdsc`) turned out to be safe to re-enable —
+   unlike the display one that caused the 11 s reset, the GPU domain is off at
+   boot and has no proxy-enable, so `gdsc-regulator`'s probe just registers
+   them. The same DTB adds `ddr_device_type = <7>` to `/memory`: Android's
+   bootloader injects it at runtime, GRUB doesn't, and without it kgsl dies at
+   probe with a cryptic `Unable to read qcom,bus-freq` while resolving its
+   per-DDR bus tables. (7 = LPDDR4X, straight from the XBL log's
+   "LP4 DDR detected".)
+2. **Firmware from the phone itself** (`scripts/11-extract-gpu-firmware.sh`):
+   `a710_sqe.fw`, `gmu_gen70000.bin` and the TZ-signed `a710_zap` shader live
+   in `/vendor/firmware` — and *vendor* is a logical partition inside Android's
+   `super`, so the script parses super's LP metadata, stitches the extents
+   with a dm-linear table, and mounts it read-only. Runs on the phone, no
+   host needed.
+3. **The kernel stack, loaded deliberately**: `msm_kgsl.ko` and its 13-module
+   dependency closure (gpucc-parrot, sched-walt, dcvs, gunyah, dma heaps…)
+   are staged in `/lib/modules/$KV/gpu/` but **blacklisted**, and
+   `garnet-gpu.service` modprobes them in order at boot — udev coldplug never
+   touches them (coldplugging this exact zoo is a proven SoC-killer).
+4. **Mesa built on the phone** (~20 min, 8 cores): version 26.1.4 with
+   `-Dvulkan-drivers=freedreno -Dfreedreno-kmds=kgsl -Dgallium-drivers=zink`,
+   plus the community A710/A720 device-table injection (A710 = chip id
+   `0x07010000`, a730 magic regs) — upstream Mesa still has no A710 entry.
+
+Result, all verified on the device: `vulkaninfo` reports **"Turnip Adreno
+(TM) 710"**, a headless fence test proves the GPU executes command buffers
+(GMU boot + SQE + zap all silent-clean in dmesg), and under the existing
+fbdev Xorg, **`glxinfo` reports OpenGL 4.6 via zink, accelerated** — with
+presentation through Mesa's software-copy path:
+
+```sh
+export VK_DRIVER_FILES=/usr/local/share/vulkan/icd.d/freedreno_icd.aarch64.json
+export LD_LIBRARY_PATH=/usr/local/lib LIBGL_DRIVERS_PATH=/usr/local/lib/dri
+export MESA_LOADER_DRIVER_OVERRIDE=zink LIBGL_KOPPER_DRI2=1 MESA_VK_WSI_DEBUG=sw
+glxgears   # GPU-rendered gears on the phone screen
+```
+
+(`MESA_VK_WSI_DEBUG=sw` is the trick worth remembering: the fbdev X server
+has no DRI3, so zink can't create a normal swapchain — that variable forces
+Vulkan WSI's CPU-copy present path, which is exactly right for a
+GPU-renders/CPU-scanout machine. Don't read too much into glxgears numbers;
+tiny gears are cheaper to draw on a CPU than to copy out of a GPU — the win
+shows up in real shader work at real resolutions.)
+
+---
+
 ## Key operational learnings
 
 - **Modules must match the exact Image** (`MODVERSIONS=y` +
@@ -371,12 +444,13 @@ lab notebook — start there, not in the driver's logs.
 - **OTG keyboard**: host mode works in software; blocked on hardware — a
   powered OTG hub is needed because the SM7435's OTG 5 V boost goes through
   pmic_glink → ADSP charger firmware that we don't run.
-- **GPU acceleration** *(attempting next)*: the desktop currently renders in
-  software (llvmpipe); the plan is **turnip (Vulkan) over KGSL** with zink
-  for GL — freedreno's GL driver is impossible on a 5.10 KGSL kernel. Needs the
-  `gpu_cc`/GPU GDSCs re-enabled (currently disabled by the reset-fix DTB),
-  Adreno SQE/GMU firmware + zap shader extracted from the phone, and a
-  community A710 turnip build. Full plan in the lab notebook.
+- **GPU-accelerated compositor**: turnip/zink work now (see the GPU section
+  above), but sway still renders with pixman/llvmpipe — wlroots' GLES renderer
+  wants EGL+GBM (needs a real DRM driver) and its Vulkan renderer wants
+  `VK_EXT_physical_device_drm`, which a KGSL-backed turnip can't offer. Next
+  ideas: patch wlroots' Vulkan renderer to accept a DRM-less device, or keep
+  the compositor on CPU and run the heavy apps on GL-via-zink / Vulkan
+  directly (works today under Xorg).
 - **Durability**: `fsck.vfat` the ESP, trim the initramfs module set. (The
   slot-B re-arm is automated now — `garnet-mark-boot-successful.service`.)
 

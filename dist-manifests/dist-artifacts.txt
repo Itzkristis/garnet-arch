@@ -3,8 +3,9 @@
 205161  0bb0f611ac8ca187  config-garnet-gki
 365020  ed62bda5ad7e77fe  garnet-sm7435.dtb
 365076  496cc4cf9347c43f  garnet-sm7435-nommgdsc.dtb
+365056  d595256b106ddfd5  garnet-sm7435-gpu.dtb
 4538368  31f678b979fe5b1c  grubaa64.efi
-4116  bf04fd5ee9bac2ef  grub.cfg
+4822  88d98f226060c55d  grub.cfg
 29241856  67c94abf163962a9  Image-garnet-efifb
 29241856  487cd83b2affdcfb  Image-garnet-gki
 29522432  539c1691bc8bc496  Image-vt

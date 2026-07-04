@@ -43,6 +43,28 @@ sudo make -C "$ROOT/kernel_sm7435" O="$OUT" ARCH=arm64 LLVM=1 LLVM_IAS=1 \
 [ -f "$ROOT/out/drivers/rtc/rtc-pm8xxx.ko" ] && \
   sudo install -Dm644 "$ROOT/out/drivers/rtc/rtc-pm8xxx.ko" \
        "$MNT/lib/modules/$KV/updates/rtc-pm8xxx.ko"
+# GPU stack (Adreno 710 / kgsl) — staged in gpu/ so it survives pruning, but
+# BLACKLISTED (rootfs/etc/modprobe.d/garnet-gpu-blacklist.conf) so udev
+# coldplug can't load it; garnet-gpu.service loads it in order at boot.
+# Needs the garnet-sm7435-gpu.dtb (script 10) + firmware (script 11).
+for m in drivers/clk/qcom/gpucc-parrot.ko \
+         kernel/sched/walt/sched-walt.ko \
+         drivers/soc/qcom/dcvs/qcom-pmu-lib.ko \
+         drivers/soc/qcom/msm_performance.ko \
+         drivers/soc/qcom/dcvs/dcvs_fp.ko \
+         drivers/soc/qcom/dcvs/qcom-dcvs.ko \
+         arch/arm64/gunyah/gh_arm_drv.ko \
+         drivers/virt/gunyah/gh_msgq.ko \
+         drivers/virt/gunyah/gh_dbl.ko \
+         drivers/virt/gunyah/gh_rm_drv.ko \
+         drivers/soc/qcom/mem_buf/mem_buf_dev.ko \
+         drivers/gpu/msm/msm_kgsl.ko \
+         drivers/iommu/msm_dma_iommu_mapping.ko \
+         drivers/dma-buf/heaps/qcom_dma_heaps.ko; do
+  [ -f "$MNT/lib/modules/$KV/kernel/$m" ] && \
+    sudo install -Dm644 "$MNT/lib/modules/$KV/kernel/$m" \
+         "$MNT/lib/modules/$KV/gpu/$(basename "$m")"
+done
 
 echo "[*] laying down our services + configs from rootfs/"
 sudo cp -av "$HERE/rootfs/." "$MNT/"
@@ -55,6 +77,7 @@ sudo chroot "$MNT" /bin/bash -c '
   systemctl enable garnet-mark-boot-successful.service   # needs gptfdisk (pacman -S once online)
   systemctl enable systemd-timesyncd
   systemctl enable garnet-rtc-restore.service garnet-rtc-save.timer garnet-rtc-save-shutdown.service
+  systemctl enable garnet-gpu.service         # no-op unless the gpu DTB is booted
   systemctl enable wpa_supplicant@wlan0
   systemd-machine-id-setup
 ' || echo "[=] chroot step needs binfmt/qemu-aarch64 on the host if it failed here"

@@ -1,0 +1,20 @@
+# Deliberate, ordered GPU bring-up (Adreno 710 / KGSL). The modules are
+# blacklisted (/etc/modprobe.d/garnet-gpu-blacklist.conf) so udev coldplug can
+# never load them in an uncontrolled order — this service is the only loader.
+# Requires the garnet-sm7435-gpu.dtb (GPU GDSCs enabled + ddr_device_type).
+[Unit]
+Description=garnet: load GPU stack (gpucc-parrot then msm_kgsl)
+After=systemd-udev-settle.service local-fs.target
+
+[Service]
+Type=oneshot
+ExecCondition=/bin/sh -c "grep -q ok /proc/device-tree/soc/qcom,gdsc@3d99108/status"
+RemainAfterExit=yes
+# insurance: keep the GPU QMIP AHB interface clock on around gpucc probe
+ExecStartPre=-/bin/sh -c "echo 1 > /sys/kernel/debug/clk/gcc_qmip_gpu_ahb_clk/clk_prepare_enable"
+ExecStart=/usr/sbin/modprobe gpucc-parrot
+ExecStart=/usr/sbin/modprobe msm_kgsl
+ExecStart=/usr/sbin/modprobe qcom_dma_heaps
+
+[Install]
+WantedBy=multi-user.target
