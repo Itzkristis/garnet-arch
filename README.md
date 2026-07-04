@@ -1,11 +1,5 @@
 # Linux on the Xiaomi garnet (Redmi Note 13 Pro 5G / Poco X6 5G)
 
-This is the story — and the full reproduction kit — of getting a real Linux
-userspace (Arch Linux ARM, systemd, SSH, Wi-Fi, even a Wayland desktop) running
-on the **Xiaomi garnet** (SoC SM7435 "parrot", Snapdragon 7s Gen 2). No Android
-userspace, no postmarketOS — the phone boots through **Mu-Silicium UEFI** and
-GRUB like a weird little ARM laptop.
-
 Everything here exists so that **anyone with their own garnet** can do the same
 thing from clean upstream sources: the kernel patches, two new drivers, the
 kernel config, the init scripts, the exact module load order, the systemd
@@ -291,17 +285,28 @@ concrete result is `initramfs/load-order.list` (the exact insmod order) and
 
 ## The Wi-Fi one-liner that cost hours
 
-`wlan0` associated, scanned, and received frames perfectly — but the WPA2
-4-way handshake kept failing with a misleading "pre-shared key may be
-incorrect". The real cause: our qcacld build compiles **only** the fastpath TX
-path, and its runtime switch `gEnableFastPath` **defaults to off** — so 100 %
-of host transmit, including EAPOL message 2/4, was being silently dropped. The
-fix is literally one line in
-`rootfs/lib/firmware/wlan/qca_cld/WCNSS_qcom_cfg.ini`: `gEnableFastPath=1`.
+Wi-Fi looked *almost* fine. `wlan0` came up, scanned every network in the
+house, associated to the AP, and received frames without a hiccup. But the
+WPA2 handshake failed every single time, and wpa_supplicant kept insisting the
+password was wrong. It wasn't.
 
-qcacld's own logging is a black hole; this was found with ftrace `kfree_skb`
-histograms and kprobes. The full playbook is in the lab notebook — worth a
-read if you ever have to debug this driver.
+What was actually happening: our qcacld build only compiles the "fastpath" TX
+path, and fastpath has a runtime switch — `gEnableFastPath` — that **defaults
+to off**. With it off, the driver quietly threw away every packet the phone
+tried to send. Receiving worked, transmitting didn't, and the handshake died
+because our half of it (EAPOL message 2/4) never left the device. No error, no
+log line, nothing.
+
+The fix is one line in `rootfs/lib/firmware/wlan/qca_cld/WCNSS_qcom_cfg.ini`:
+
+```ini
+gEnableFastPath=1
+```
+
+Finding it was the hard part. qcacld's own logging tells you nothing useful,
+so the drops were tracked down with ftrace `kfree_skb` histograms and kprobes
+instead. If you ever have to debug this driver, the full playbook is in the
+lab notebook — start there, not in the driver's logs.
 
 ---
 
