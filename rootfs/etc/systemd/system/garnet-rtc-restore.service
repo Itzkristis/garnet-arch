@@ -1,0 +1,18 @@
+# Sets the system clock from the read-only pmk8350 RTC + the offset saved by
+# garnet-rtc-save — correct time at boot even with no network. See the script
+# header for why the RTC can't simply be written.
+# DefaultDependencies=no so it can order BEFORE systemd-timesyncd (which is
+# itself part of sysinit.target — default deps would create a cycle).
+[Unit]
+Description=garnet: set clock from read-only RTC + saved offset
+DefaultDependencies=no
+After=systemd-modules-load.service local-fs.target
+Before=time-sync.target systemd-timesyncd.service sysinit.target shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/garnet-rtc-offset.sh restore
+
+[Install]
+WantedBy=sysinit.target

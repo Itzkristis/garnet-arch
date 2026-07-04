@@ -39,6 +39,10 @@ sudo make -C "$ROOT/kernel_sm7435" O="$OUT" ARCH=arm64 LLVM=1 LLVM_IAS=1 \
 [ -f "$ROOT/modules/qcom/opensource/wlan/qcacld-3.0/wlan.ko" ] && \
   sudo install -Dm644 "$ROOT/modules/qcom/opensource/wlan/qcacld-3.0/wlan.ko" \
        "$MNT/lib/modules/$KV/updates/wlan.ko"
+# RTC module (read-only RTC; used by garnet-rtc-restore/save, survives pruning):
+[ -f "$ROOT/out/drivers/rtc/rtc-pm8xxx.ko" ] && \
+  sudo install -Dm644 "$ROOT/out/drivers/rtc/rtc-pm8xxx.ko" \
+       "$MNT/lib/modules/$KV/updates/rtc-pm8xxx.ko"
 
 echo "[*] laying down our services + configs from rootfs/"
 sudo cp -av "$HERE/rootfs/." "$MNT/"
@@ -49,6 +53,8 @@ sudo chroot "$MNT" /bin/bash -c '
   systemctl enable systemd-networkd systemd-resolved
   systemctl enable garnet-wifi-fw.service garnet-usb-gadget.service
   systemctl enable garnet-mark-boot-successful.service   # needs gptfdisk (pacman -S once online)
+  systemctl enable systemd-timesyncd
+  systemctl enable garnet-rtc-restore.service garnet-rtc-save.timer garnet-rtc-save-shutdown.service
   systemctl enable wpa_supplicant@wlan0
   systemd-machine-id-setup
 ' || echo "[=] chroot step needs binfmt/qemu-aarch64 on the host if it failed here"

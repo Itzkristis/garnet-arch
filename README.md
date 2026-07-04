@@ -351,6 +351,14 @@ lab notebook — start there, not in the driver's logs.
 - **Mu-Silicium mass-storage mode is your best friend** — it exposes the whole
   UFS, so you edit the ESP directly and read boot logs back; no fastboot
   round-trips.
+- **The pmk8350 RTC is read-only from Linux** — the SPMI arbiter's ownership
+  table gives the RTC peripheral to TZ/XBL, so writes NACK no matter what.
+  Do **not** add `allow-set-time` to the `rtc@6100` DT node: the kernel's
+  clock-sync worker then retries the blocked write ~1/s forever, and about an
+  hour of that storm most likely ended in a TZ **crashdump**. Instead the
+  clock is kept by `garnet-rtc-restore/save`: an offset file
+  (`system − rtc`, saved while NTP-synced) re-applied at every boot before
+  the network — correct time even offline.
 - **The A/B retry countdown is stopped by the GPT "successful" bit** (bit 54
   on `boot_b`'s entry) — `garnet-mark-boot-successful.service` sets it every
   boot. `fastboot set_active b` clears it, so the service matters after every
@@ -363,7 +371,6 @@ lab notebook — start there, not in the driver's logs.
 - **OTG keyboard**: host mode works in software; blocked on hardware — a
   powered OTG hub is needed because the SM7435's OTG 5 V boost goes through
   pmic_glink → ADSP charger firmware that we don't run.
-- **RTC**: ship `rtc-pm8xxx` over SPMI (the clock is currently wrong).
 - **GPU**: the plan is **turnip (Vulkan) over KGSL** with zink for GL —
   freedreno's GL driver is impossible on a 5.10 KGSL kernel. Needs the
   `gpu_cc`/GPU GDSCs re-enabled (currently disabled by the reset-fix DTB),

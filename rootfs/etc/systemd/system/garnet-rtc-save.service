@@ -1,0 +1,8 @@
+# Saves offset = system_time - rtc (only while NTP-synced). Triggered by
+# garnet-rtc-save.timer; garnet-rtc-save-shutdown.service covers shutdown.
+[Unit]
+Description=garnet: save RTC offset (system - rtc)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/garnet-rtc-offset.sh save

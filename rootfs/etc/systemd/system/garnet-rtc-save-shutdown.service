@@ -1,0 +1,13 @@
+# Saves the RTC offset one last time on clean shutdown (the hourly timer
+# covers crashes/battery-out reasonably well).
+[Unit]
+Description=garnet: save RTC offset at shutdown
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+ExecStop=/usr/local/sbin/garnet-rtc-offset.sh save
+
+[Install]
+WantedBy=multi-user.target
