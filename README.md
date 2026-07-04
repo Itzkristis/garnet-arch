@@ -80,7 +80,45 @@ github/
 
 Host needs: `clang`/`llvm` (a modern one is fine — that's what a patch is for),
 `aarch64` cross tools optional, `device-tree-compiler` (`fdtput`), `cpio`,
-`gzip`, passwordless `sudo` for the loop/mass-storage mounts.
+`gzip`, `curl`, `bsdtar` (libarchive), `grub-efi-arm64-bin`, passwordless `sudo`
+for the loop/mass-storage mounts.
+
+### External sources you fetch yourself (not in this repo)
+
+This repo ships only *our* changes (patches, new drivers, configs, scripts). The
+upstream trees, the firmware/bootloader project, and the distro rootfs are pulled
+from their own sources. `scripts/00-clone-sources.sh` does the git clones; the
+distro tarball is fetched by `09-bootstrap-arch-rootfs.sh`. For transparency,
+here is everything that gets fetched and where from:
+
+```bash
+export ROOT=$HOME/garnet_linux
+cd "$ROOT"
+
+# --- kernel + device trees + vendor modules (LineageOS, lineage-23.2, 5.10.252) ---
+git clone --depth=1 -b lineage-23.2 https://github.com/LineageOS/android_kernel_xiaomi_sm7435             kernel_sm7435
+git clone --depth=1 -b lineage-23.2 https://github.com/LineageOS/android_kernel_xiaomi_sm7435-devicetrees devicetrees
+git clone --depth=1 -b lineage-23.2 https://github.com/LineageOS/android_kernel_xiaomi_sm7435-modules      modules
+# (the modules tree contains qcacld-3.0 — the Wi-Fi driver built by 07-build-qcacld.sh)
+
+# --- Mu-Silicium UEFI firmware / bootloader (build + flash per its own README) ---
+git clone --recursive https://github.com/Project-Silicium/Mu-Silicium
+
+# --- Arch Linux ARM aarch64 rootfs tarball (installed onto userdata by script 09) ---
+curl -LO http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz
+
+# --- static aarch64 busybox for the first-stage initramfs (fetched by get-busybox.sh) ---
+curl -Lo busybox https://busybox.net/downloads/binaries/1.35.0-aarch64-linux-musl/busybox
+
+# --- grubaa64.efi is BUILT from your distro's GRUB arm64-efi package (build-grub-efi.sh),
+#     not cloned. On Debian/Ubuntu: apt install grub-efi-arm64-bin grub-common
+```
+
+**Proprietary firmware is never downloaded** — the WPSS Wi-Fi blob (and later the
+GPU firmware) is extracted from *your own* phone by `scripts/08-extract-firmware.sh`.
+
+Then run the pipeline (the scripts wrap the fetches above so you don't have to run
+them by hand):
 
 ```bash
 export ROOT=$HOME/garnet_linux            # everything is relative to this
