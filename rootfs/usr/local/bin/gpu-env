@@ -1,0 +1,12 @@
+#!/bin/sh
+# Run any command with turnip/zink hardware acceleration (X11 apps).
+# Usage: gpu-env firefox   ·   gpu-env glxgears   ·   DISPLAY defaults to :0
+export DISPLAY=${DISPLAY:-:0}
+export LD_LIBRARY_PATH=/usr/local/lib
+export VK_DRIVER_FILES=/usr/local/share/vulkan/icd.d/freedreno_icd.aarch64.json
+export LIBGL_DRIVERS_PATH=/usr/local/lib/dri
+export MESA_LOADER_DRIVER_OVERRIDE=zink
+export LIBGL_KOPPER_DRI2=1
+export MESA_VK_WSI_DEBUG=sw   # WSI CPU-copy present: no DRI3/DRM on this system
+export MOZ_X11_EGL=0          # Firefox: use the proven GLX path
+exec "$@"
