@@ -371,8 +371,9 @@ lab notebook — start there, not in the driver's logs.
 - **OTG keyboard**: host mode works in software; blocked on hardware — a
   powered OTG hub is needed because the SM7435's OTG 5 V boost goes through
   pmic_glink → ADSP charger firmware that we don't run.
-- **GPU**: the plan is **turnip (Vulkan) over KGSL** with zink for GL —
-  freedreno's GL driver is impossible on a 5.10 KGSL kernel. Needs the
+- **GPU acceleration** *(attempting next)*: the desktop currently renders in
+  software (llvmpipe); the plan is **turnip (Vulkan) over KGSL** with zink
+  for GL — freedreno's GL driver is impossible on a 5.10 KGSL kernel. Needs the
   `gpu_cc`/GPU GDSCs re-enabled (currently disabled by the reset-fix DTB),
   Adreno SQE/GMU firmware + zap shader extracted from the phone, and a
   community A710 turnip build. Full plan in the lab notebook.
