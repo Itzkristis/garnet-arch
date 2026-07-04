@@ -1,0 +1,17 @@
+# Auto-start the sway desktop on every boot. Runs the exact command that works
+# by hand: runuser drops to alarm, garnet-sway forces the alarm dbus bus + the
+# drm/libinput backend. seatd gives the seat; linger keeps /run/user/1000 (and
+# the wayland socket + squeekboard) alive.
+[Unit]
+Description=garnet: sway desktop for alarm
+After=multi-user.target seatd.service garnet-touch.service
+Wants=seatd.service
+ConditionPathExists=/dev/dri/card0
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/runuser -u alarm -- /usr/local/bin/garnet-sway
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

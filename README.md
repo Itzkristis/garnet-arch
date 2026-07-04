@@ -9,7 +9,8 @@ booting phone. If you get stuck, the entire debugging saga is preserved in
 
 > **Before anything else, read [`PREREQUISITES.md`](PREREQUISITES.md).** It
 > covers the unlocked-bootloader requirement, host packages, and — important —
-> the fact that this **wipes your Android userdata**.
+> the fact that this **wipes your Android userdata**. Then follow
+> **[`INSTALLATION.md`](INSTALLATION.md)** for the step-by-step.
 
 > **No proprietary firmware is shipped.** The WPSS Wi-Fi firmware (and later
 > the GPU firmware) is Qualcomm/Xiaomi property. You extract it from *your own*
@@ -43,8 +44,9 @@ that's expected).
 
 ```
 github/
-├── README.md                     ← you are here
+├── README.md                     ← you are here (what works + how it works)
 ├── PREREQUISITES.md              ← read first (hardware, bootloader, host packages)
+├── INSTALLATION.md               ← the step-by-step install + optional extras
 ├── scripts/                      ← the pipeline (00–06 in order; others as needed)
 │   ├── 00-clone-sources.sh       clone kernel/dts/modules/Mu-Silicium (lineage-23.2)
 │   ├── 01-apply-patches.sh       apply the 3 patches + drop in the 2 new drivers
@@ -71,196 +73,37 @@ github/
 
 ---
 
-## Installation — the full walkthrough
+## Installation
 
-Seven stages: get this repo, prepare the phone, get the sources, patch them,
-build everything, put it on the phone, and start the desktop. Budget an
-afternoon the first time.
+The full step-by-step is in **[`INSTALLATION.md`](INSTALLATION.md)**. It's in
+two halves: a **core install** that gets you a booting Arch Linux reachable
+from your PC over the USB cable (USB tethering + SSH), and an **optional /
+recommended** half for Wi-Fi, the sway desktop and its autostart, the
+on-screen keyboard, GPU acceleration, the touchscreen, and keyboard shortcuts
+(including how to add your own).
 
-### Step 0 — clone this repo and set up the host
-
-```bash
-# Everything in this project lives under one root directory:
-export ROOT=$HOME/garnet_linux
-mkdir -p "$ROOT" && cd "$ROOT"
-
-git clone https://github.com/Itzkristis/garnet-arch.git github
-cd github
-```
-
-Host packages you'll need (names vary by distro — see `PREREQUISITES.md` for
-the full list): `clang`/`llvm`, `device-tree-compiler`, `cpio`, `gzip`, `curl`,
-`bsdtar`, `git`, `make`, `grub-efi-arm64-bin` + `grub-common`, and
-`qemu-user-static` with binfmt for the rootfs chroot. A recent clang is
-completely fine — one of our patches exists precisely so a modern compiler can
-build this 5.10 tree.
-
-### Step 1 — prepare the phone (one-time)
-
-1. **Unlock the bootloader** through Xiaomi's official unlock process. Yes, it
-   wipes the phone; yes, there's a waiting period. There's no way around it.
-2. **Build and flash Mu-Silicium UEFI.** Follow the
-   [Mu-Silicium](https://github.com/Project-Silicium/Mu-Silicium) project's own
-   README to build the garnet image, then flash it to **slot B** and make B
-   active:
-
-   ```bash
-   fastboot flash boot_b <mu-silicium-boot-image>.img
-   fastboot set_active b
-   ```
-
-   Android stays intact on slot A — you can always `fastboot set_active a` to
-   go back.
-3. **Know the retry-counter gotcha:** every power-on of slot B decrements an
-   A/B retry counter (it starts at 7), and the bootloader only stops counting
-   once the slot's GPT "successful" bit is set — which nothing does until
-   Linux is installed. When it hits zero the phone silently falls back to
-   slot A. Until Step 5 is done, re-run `fastboot set_active b` after every
-   flash session; after that, `garnet-mark-boot-successful.service` (installed
-   by the `09` bootstrap) sets the bit on every boot and the countdown stops
-   for good.
-
-### Step 2 — clone the upstream sources
-
-This repo ships only *our* changes. The kernel, device trees, vendor modules,
-and Mu-Silicium come from their own upstreams. One script pulls them all into
-`$ROOT`:
+The short version of the pipeline (all scripts run from `$ROOT/github`, with
+`$ROOT=$HOME/garnet_linux`):
 
 ```bash
-./scripts/00-clone-sources.sh
+./scripts/00-clone-sources.sh          # upstream kernel/dts/modules/Mu-Silicium
+./scripts/01-apply-patches.sh          # our 3 patches + 2 new drivers
+./scripts/02-build-modules.sh          # Image + DTB + modules
+./scripts/03-make-nommgdsc-dtb.sh      # the ~11 s reset-fix DTB (required)
+./scripts/07-build-qcacld.sh           # Wi-Fi driver
+./scripts/build-grub-efi.sh            # grubaa64.efi
+./scripts/get-busybox.sh               # static busybox
+./scripts/04-stage-modules.sh          # module closure + load order
+./scripts/05-pack-initramfs.sh initramfs/init-switch.sh
+# phone in Mu-Silicium mass-storage mode for the next three:
+./scripts/09-bootstrap-arch-rootfs.sh  # ⚠️ wipes userdata → Arch + services
+./scripts/08-extract-firmware.sh /mnt/archroot/lib/firmware/adrastea
+./scripts/06-deploy-esp.sh             # artifacts → GARNET-ESP
 ```
 
-For transparency, here is exactly what that fetches and from where — you can
-run these by hand instead if you prefer:
-
-```bash
-cd "$ROOT"
-
-# Kernel + device trees + vendor modules — LineageOS, branch lineage-23.2 (5.10.252):
-git clone --depth=1 -b lineage-23.2 https://github.com/LineageOS/android_kernel_xiaomi_sm7435             kernel_sm7435
-git clone --depth=1 -b lineage-23.2 https://github.com/LineageOS/android_kernel_xiaomi_sm7435-devicetrees devicetrees
-git clone --depth=1 -b lineage-23.2 https://github.com/LineageOS/android_kernel_xiaomi_sm7435-modules     modules
-# (the modules tree contains qcacld-3.0, the Wi-Fi driver built later by 07)
-
-# Mu-Silicium UEFI firmware/bootloader:
-git clone --recursive https://github.com/Project-Silicium/Mu-Silicium
-```
-
-Two more downloads happen later, done for you by the scripts: the Arch Linux
-ARM rootfs tarball (`09-bootstrap-arch-rootfs.sh` fetches it from
-`os.archlinuxarm.org`) and a static aarch64 busybox (`get-busybox.sh` fetches
-it from `busybox.net`). Proprietary firmware is **never** downloaded — that
-comes off your own phone in Step 5.
-
-### Step 3 — apply the patches
-
-```bash
-./scripts/01-apply-patches.sh
-```
-
-That's it — the script `git apply`s the combined patch into
-`$ROOT/kernel_sm7435` and copies the two new driver sources into place. It's
-idempotent, so running it twice is harmless.
-
-If you'd rather do it manually (or want to see exactly what changes):
-
-```bash
-cd "$ROOT/kernel_sm7435"
-git apply "$ROOT/github/patches/all-kernel-patches.patch"
-
-# The two brand-new drivers are plain file copies, not patches:
-cp "$ROOT/github/kernel-new-drivers/extcon-fake-vbus.c" drivers/extcon/
-cp "$ROOT/github/kernel-new-drivers/simpledrm.c"        drivers/gpu/drm/tiny/
-```
-
-`patches/` also contains each patch as a separate file with a header
-explaining why it exists, if you want to cherry-pick. What each one does is
-covered in [The three kernel patches](#the-three-kernel-patches-why-the-tree-is--dirty)
-below.
-
-### Step 4 — build everything
-
-```bash
-cd "$ROOT/github"
-./scripts/02-build-modules.sh         # kernel Image + DTB + all 314 modules (~10 min after the Image)
-./scripts/03-make-nommgdsc-dtb.sh     # the reset-fix DTB (without it the phone hard-resets ~11 s in)
-./scripts/07-build-qcacld.sh          # the Wi-Fi driver, wlan.ko
-./scripts/build-grub-efi.sh           # grubaa64.efi (becomes BOOTAA64.EFI on the ESP)
-./scripts/get-busybox.sh              # static busybox for the initramfs
-./scripts/04-stage-modules.sh         # compute the 43-module closure + load order
-./scripts/05-pack-initramfs.sh initramfs/init-switch.sh   # pack the daily-driver initramfs
-```
-
-Outputs land in `$ROOT/dist/`. If you want to check your build against the
-author's, sha256 sums are in `dist-manifests/dist-artifacts.txt` — but you
-don't need the author's binaries for anything; the scripts regenerate all of
-them.
-
-### Step 5 — put it on the phone
-
-Boot the phone into Mu-Silicium and select **USB mass-storage mode** — this
-exposes the whole UFS to your PC as a block device, so no fastboot needed for
-day-to-day work. Then:
-
-```bash
-./scripts/09-bootstrap-arch-rootfs.sh   # ⚠️ DESTROYS userdata → installs Arch + our services
-./scripts/08-extract-firmware.sh /mnt/archroot/lib/firmware/adrastea   # your phone's WPSS Wi-Fi fw
-./scripts/06-deploy-esp.sh              # copy Image/DTB/grub.cfg/initramfs to the GARNET-ESP partition
-```
-
-(If you don't have a GARNET-ESP partition yet, see `PREREQUISITES.md` — it must
-be formatted `mkfs.vfat -F 32 -S 4096` because the UFS logical block size is
-4096.)
-
-### Step 6 — boot it
-
-Reboot the phone. Mu-Silicium chainloads GRUB from the ESP; pick a menu entry
-with the **volume keys**. If something goes wrong, the init scripts write logs
-to `GARNET-ESP:/logs/`, which you can read back over mass-storage mode.
-
-A sane first run is to walk the milestones in order rather than jumping
-straight to the desktop: boot the diagnostic `init-storage.sh` initramfs and
-confirm `/dev/sd*` appears → boot into Arch and check systemd reaches the
-console → plug into your PC and `ssh root@172.16.42.1` → bring up Wi-Fi →
-start sway. Each stage has a GRUB entry.
-
-### Step 7 — start sway
-
-SSH in (`ssh root@172.16.42.1`), make sure `/dev/dri/card0` exists (simpledrm
-autoloads via `modules-load.d`), then:
-
-```bash
-runuser -u alarm -- env XDG_RUNTIME_DIR=/run/user/1000 WLR_LIBINPUT_NO_DEVICES=1 WLR_BACKENDS=drm sway
-```
-
-Run apps into the session from another SSH window:
-
-```bash
-su - alarm -c "env XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-1 foot"
-```
-
-Swap `foot` for any Wayland app. Handy combo: have foot run
-`tmux new -A -s phone`, then `ssh -t alarm@172.16.42.1 tmux attach -t phone`
-from the PC mirrors the phone's terminal into your SSH session.
-
-Note: `seatd`, the alarm user's groups, and `loginctl enable-linger alarm` are
-already set up by the `09` bootstrap — don't disable linger, or logind wipes
-`/run/user/1000` (and sway's socket with it) when the last login exits.
-
-### Step 8 — GPU acceleration (optional but glorious)
-
-Three commands, all detailed in the GPU section below:
-
-```bash
-./scripts/10-make-gpu-dtb.sh          # on the host: DTB with GPU domains enabled
-# copy dist/garnet-sm7435-gpu.dtb to the ESP, point a GRUB entry at it, boot it
-./scripts/11-extract-gpu-firmware.sh  # on the phone: a710 firmware from /vendor
-# then build Mesa on the phone (see "GPU acceleration — turnip on KGSL")
-```
-
-`garnet-gpu.service` (installed by `09`) loads the kernel side at every boot;
-it no-ops on non-GPU DTBs.
-
+Then reboot, pick the Arch GRUB entry, and `ssh root@172.16.42.1` over USB.
+See [`INSTALLATION.md`](INSTALLATION.md) for the details, the host-side USB
+tethering setup, and all the optional pieces.
 ---
 
 ## The three kernel patches (why the tree is `-dirty`)
