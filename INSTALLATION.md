@@ -273,6 +273,7 @@ Super):
 ```
 bindsym Mod1+t exec foot       # Alt+t  → terminal
 bindsym Mod1+w exec firefox    # Alt+w  → Firefox
+bindsym Mod1+q kill            # Alt+q  → close the focused window
 ```
 
 These need a real keyboard (an OTG keyboard, or a Bluetooth one later) — the
