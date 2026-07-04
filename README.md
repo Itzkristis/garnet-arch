@@ -71,8 +71,9 @@ github/
 
 ## Installation — the full walkthrough
 
-Six stages: get this repo, prepare the phone, get the sources, patch them,
-build everything, and put it on the phone. Budget an afternoon the first time.
+Seven stages: get this repo, prepare the phone, get the sources, patch them,
+build everything, put it on the phone, and start the desktop. Budget an
+afternoon the first time.
 
 ### Step 0 — clone this repo and set up the host
 
@@ -217,6 +218,29 @@ straight to the desktop: boot the diagnostic `init-storage.sh` initramfs and
 confirm `/dev/sd*` appears → boot into Arch and check systemd reaches the
 console → plug into your PC and `ssh root@172.16.42.1` → bring up Wi-Fi →
 start sway. Each stage has a GRUB entry.
+
+### Step 7 — start sway
+
+SSH in (`ssh root@172.16.42.1`), make sure `/dev/dri/card0` exists (simpledrm
+autoloads via `modules-load.d`), then:
+
+```bash
+runuser -u alarm -- env XDG_RUNTIME_DIR=/run/user/1000 WLR_LIBINPUT_NO_DEVICES=1 WLR_BACKENDS=drm sway
+```
+
+Run apps into the session from another SSH window:
+
+```bash
+su - alarm -c "env XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-1 foot"
+```
+
+Swap `foot` for any Wayland app. Handy combo: have foot run
+`tmux new -A -s phone`, then `ssh -t alarm@172.16.42.1 tmux attach -t phone`
+from the PC mirrors the phone's terminal into your SSH session.
+
+Note: `seatd`, the alarm user's groups, and `loginctl enable-linger alarm` are
+already set up by the `09` bootstrap — don't disable linger, or logind wipes
+`/run/user/1000` (and sway's socket with it) when the last login exits.
 
 ---
 
