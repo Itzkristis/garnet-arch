@@ -1,0 +1,82 @@
+# GRUB config for garnet (ESP root /grub.cfg). Edit freely; no rebuild needed.
+# Volume keys should move the selection, power = enter (Mu-Silicium key mapping).
+set timeout=5
+set default=9
+
+menuentry '0 DIAG: dump previous-boot ramoops crash log (no modules)' {
+    devicetree /garnet-sm7435.dtb
+    linux /Image earlycon=efifb keep_bootcon loglevel=8 ignore_loglevel
+    initrd /initramfs-diag.gz
+}
+menuentry '1 STORAGE: full 36-module UFS bring-up (resets ~11s)' {
+    devicetree /garnet-sm7435.dtb
+    linux /Image earlycon=efifb keep_bootcon loglevel=8 ignore_loglevel
+    initrd /initramfs-storage.gz
+}
+menuentry '2 STORAGE bisect: no ufs_qcom' {
+    devicetree /garnet-sm7435.dtb
+    linux /Image earlycon=efifb keep_bootcon loglevel=8 ignore_loglevel
+    initrd /initramfs-noufs.gz
+}
+menuentry '3 STORAGE bisect: no ufs_qcom, no gcc-parrot' {
+    devicetree /garnet-sm7435.dtb
+    linux /Image earlycon=efifb keep_bootcon loglevel=8 ignore_loglevel
+    initrd /initramfs-nogcc.gz
+}
+menuentry '4 STORAGE + clk_ignore_unused pd_ignore_unused' {
+    devicetree /garnet-sm7435.dtb
+    linux /Image earlycon=efifb keep_bootcon loglevel=8 ignore_loglevel clk_ignore_unused pd_ignore_unused
+    initrd /initramfs-storage.gz
+}
+menuentry '5 BUSYBOX-ONLY (milestone-1 rollback)' {
+    devicetree /garnet-sm7435.dtb
+    linux /Image earlycon=efifb keep_bootcon loglevel=8 ignore_loglevel
+    initrd /initramfs-bb.gz
+}
+menuentry '6 NO initramfs (rootfs panic test)' {
+    devicetree /garnet-sm7435.dtb
+    linux /Image earlycon=efifb keep_bootcon loglevel=8 ignore_loglevel
+}
+# Fix candidate for the ~11 s hard reset: same storage boot, but the DTB has the 7
+# multimedia GDSC nodes (cam_cc/disp_cc/gpu_cc/video_cc) set status=disabled, so
+# gdsc-regulator.ko never does its raw GDSCR read-modify-write on unclocked/live
+# mm clock-controller registers after gcc-parrot registers. GCC + hlos1_vote GDSCs kept.
+menuentry '7 STORAGE (working UFS): mm-GDSCs-disabled DTB, logs to ESP:/logs/' {
+    devicetree /garnet-sm7435-nommgdsc.dtb
+    linux /Image earlycon=efifb keep_bootcon loglevel=8 ignore_loglevel
+    initrd /initramfs-storage.gz
+}
+# Milestone 3 step 1: Arch Linux ARM rootfs on the old userdata partition
+# (GPT name "userdata", ext4 label "archroot"). Mounts it + the ESP, runs a
+# chroot smoke test of the Arch userland, logs to ESP:/logs/arch-N.txt.
+# Real systemd boot needs the DEVTMPFS/VT kernel rebuild (next step).
+menuentry '8 ARCH: chroot smoke test from userdata/archroot' {
+    devicetree /garnet-sm7435-nommgdsc.dtb
+    linux /Image earlycon=efifb keep_bootcon loglevel=8 ignore_loglevel
+    initrd /initramfs-arch.gz
+}
+# NEW KERNEL (Image-vt: +DEVTMPFS +FHANDLE +VT +FB_EFI +fbcon) — real systemd
+# boot with a console on the phone screen. Modules inside initramfs-switch.gz
+# are rebuilt to match Image-vt (MODVERSIONS). Entries 0-8 keep the old kernel
+# as rollback.
+menuentry '9 ARCH LINUX (STABLE MILESTONE: boots to root shell on screen)' {
+    devicetree /garnet-sm7435-nommgdsc.dtb
+    linux /Image-vt earlycon=efifb keep_bootcon console=tty0 loglevel=7 fw_devlink=permissive consoleblank=0 systemd.mask=garnet-usb-gadget.service
+    initrd /initramfs-switch.gz
+}
+# USB bring-up test entry: same boot but the gadget service runs. The service
+# script is the bisect variable (currently: no eud.ko - suspected XPU-protected
+# register block crashing the SoC into Xiaomi crashdump mode).
+menuentry '10 ARCH SYSTEMD + USB GADGET TEST (may crash)' {
+    devicetree /garnet-sm7435-nommgdsc.dtb
+    linux /Image-vt earlycon=efifb keep_bootcon console=tty0 loglevel=7 fw_devlink=permissive consoleblank=0
+    initrd /initramfs-switch.gz
+}
+# Serialized USB bring-up INSIDE the initramfs: no systemd, no udev, one
+# insmod at a time with sync'd breadcrumbs to ESP:/logs/usb-initramfs.txt.
+# NCM gadget assembled via configfs if the UDC appears.
+menuentry '11 USB TEST (initramfs only, breadcrumbed, no Arch)' {
+    devicetree /garnet-sm7435-nommgdsc.dtb
+    linux /Image-vt earlycon=efifb keep_bootcon console=tty0 loglevel=7 fw_devlink=permissive consoleblank=0
+    initrd /initramfs-usbtest.gz
+}

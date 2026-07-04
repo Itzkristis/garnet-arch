@@ -1,0 +1,18 @@
+# Prebuilt artifacts (in ../../dist/, not committed here — large binaries)
+# size  sha256  name
+205161  0bb0f611ac8ca187  config-garnet-gki
+365020  ed62bda5ad7e77fe  garnet-sm7435.dtb
+365076  496cc4cf9347c43f  garnet-sm7435-nommgdsc.dtb
+4538368  31f678b979fe5b1c  grubaa64.efi
+4116  bf04fd5ee9bac2ef  grub.cfg
+29241856  67c94abf163962a9  Image-garnet-efifb
+29241856  487cd83b2affdcfb  Image-garnet-gki
+29522432  539c1691bc8bc496  Image-vt
+3166640  6454fad788fb5163  initramfs-arch.gz
+1142838  d4284182f1cbd6c2  initramfs-busybox-only.gz
+1143206  e0d11a00fbf5d9cb  initramfs-diag-pstore.gz
+3167564  e18562449f174fdf  initramfs.gz
+2449508  5cdf966c7b14943c  initramfs-storage-nogcc.gz
+2449502  eaa4a15714a9d84b  initramfs-storage-noufs.gz
+8188329  f373ef215985bbc4  initramfs-switch.gz
+3977596  b9be17fac07bed7a  initramfs-usbtest.gz

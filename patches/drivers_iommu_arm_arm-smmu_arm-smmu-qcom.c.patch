@@ -1,0 +1,23 @@
+diff --git a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
+index a6c41f970..b50db5f9e 100644
+--- a/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
++++ b/drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c
+@@ -2278,8 +2278,16 @@ static int qsmmuv500_tbu_register(struct device *dev, void *cookie)
+ 	int i, err, num_irqs = 0;
+ 
+ 	if (!dev->driver) {
+-		dev_err(dev, "TBU failed probe, QSMMUV500 cannot continue!\n");
+-		return -EINVAL;
++		/*
++		 * garnet bring-up: don't let one unbound TBU abort the whole apps
++		 * SMMU. The multimedia mnoc/compute/sf TBUs fail probe because their
++		 * vote-GDSC power isn't available (we don't run the display/mmss
++		 * stack). UFS uses the anoc TBU (SID 0x80), which probes fine, so
++		 * skip the unbound TBU and continue -- the SMMU (and UFS's IOMMU)
++		 * still come up.
++		 */
++		dev_warn(dev, "TBU failed probe; skipping (garnet bring-up)\n");
++		return 0;
+ 	}
+ 
+ 	tbu = dev_get_drvdata(dev);

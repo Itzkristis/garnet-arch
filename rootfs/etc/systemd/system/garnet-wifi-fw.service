@@ -1,0 +1,41 @@
+# Reference reconstruction of the on-device unit (from status.md/handoff.md).
+# Boots the WPSS co-processor with stock firmware, brings up the QMI/icnss2
+# stack, then loads wlan.ko and kicks wpa_supplicant.
+#
+# Prereqs on the rootfs:
+#  - stock WPSS fw extracted from the phone's modem_b (image/adrastea/) into
+#    /lib/firmware/adrastea/  (~64 MB incl. bd_*.bin board files)
+#  - wlan.ko (qcacld-3.0 "build 4") in /lib/modules/<kver>/updates/, depmod'd
+#  - WCNSS_qcom_cfg.ini in /lib/firmware/wlan/qca_cld/  (gEnableFastPath=1)
+#  - modules loaded in order; icnss2 + q6v5_pas are udev-BLACKLISTED (they must
+#    be loaded explicitly and in sequence — see garnet-modprobe-blacklist.conf).
+#
+# The module chain: qcom_ipcc -> qcom_aoss -> qcom_glink_smem -> smp2p
+#   -> qrtr-smd -> qcom_q6v5_pas -> (echo start > .../remoteproc3/state)
+#   -> icnss2  ("WLAN FW is ready") -> modprobe wlan -> wpa_supplicant@wlan0
+[Unit]
+Description=garnet WPSS/Wi-Fi firmware bring-up + wlan
+After=multi-user.target
+Wants=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Load the remoteproc/QMI chain (adjust module names to your closure):
+ExecStart=/sbin/modprobe qcom_ipcc
+ExecStart=/sbin/modprobe qcom_aoss
+ExecStart=/sbin/modprobe qcom_glink_smem
+ExecStart=/sbin/modprobe smp2p
+ExecStart=/sbin/modprobe qrtr-smd
+ExecStart=/sbin/modprobe qcom_q6v5_pas
+# WPSS does not auto-boot downstream — start it explicitly:
+ExecStart=/bin/sh -c 'echo start > /sys/class/remoteproc/remoteproc3/state'
+ExecStart=/sbin/modprobe icnss2
+ExecStart=/bin/sleep 5
+# wlan.ko has no MODULE_DEVICE_TABLE alias -> udev cannot autoload it:
+ExecStart=/sbin/modprobe wlan
+ExecStart=/bin/sleep 3
+ExecStart=/bin/systemctl start wpa_supplicant@wlan0 --no-block
+
+[Install]
+WantedBy=multi-user.target
