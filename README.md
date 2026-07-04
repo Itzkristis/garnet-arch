@@ -30,6 +30,7 @@ booting phone. If you get stuck, the entire debugging saga is preserved in
 | 6 | USB **host mode** — xhci comes up, a keyboard enumerates. Software done; needs a **powered OTG hub** because the phone can't source 5 V | 🚧 |
 | 7 | **Desktop on the phone screen** — X11 + i3 on efifb, and a backported **simpledrm** giving `/dev/dri/card0` → **sway (Wayland)** | ✅ |
 | 8 | **GPU acceleration** — the Adreno 710 executes Vulkan via **turnip on KGSL**, and **OpenGL 4.6 via zink**; glxgears runs GPU-rendered on the phone screen under Xorg | ✅ |
+| 9 | **Touchscreen + on-screen keyboard** — Goodix GT9916S multitouch (10-point) via geni-SPI, sway sees it through libinput, **squeekboard** for typing. The phone is usable standalone — no OTG keyboard needed | ✅ |
 
 A few hardware facts to orient you: garnet is an A/B device, Mu-Silicium lives
 on **slot B** (`boot_b`), and the kernel is LineageOS's downstream
@@ -410,6 +411,41 @@ shows up in real shader work at real resolutions.)
 
 ---
 
+## Touchscreen — the phone becomes self-contained
+
+The panel's touch layer is a **Goodix GT9916S** (Berlin-D) on a geni SPI bus,
+dual-sourced with a Focaltech FT3683G (the driver probes strap GPIOs and
+picks itself). Bring-up was three unglamorous discoveries:
+
+1. **The SPI engine only does GSI DMA.** This SE's FIFO interface is fused
+   off (`GENI_IF_FIFO_DISABLE_RO`), so `gpi.ko` (the GENI DMA engine) must
+   load **before** `spi-msm-geni.ko` — otherwise every transfer fails `-22`
+   and the goodix probe dies at power-on. `garnet-touch.service` encodes the
+   order; the modules are blacklisted against udev coldplug like the GPU set.
+2. **The touch rail's enable pin lives on the PM6150L's GPIO block**, so
+   `pinctrl-spmi-gpio.ko` is part of the stack too (without it the fixed
+   regulator defers forever — and so does gpio-keys, so `/dev/input` is
+   entirely empty; that one took a minute to notice).
+3. **Firmware from vendor**, same story as GPU/Wi-Fi: `goodix_firmware_CSOT.bin`
+   + config (script `11` grabs them). The driver flashes the IC at probe.
+
+Result: `goodix_ts` on `/dev/input/event1`, 10-point multitouch at the full
+1220×2712, ~240 Hz report rate. sway needs `WLR_BACKENDS=drm,libinput`
+(the old recipe's `WLR_LIBINPUT_NO_DEVICES=1` era is over) — and then
+**squeekboard** gives a proper on-screen keyboard, so the phone is usable
+with zero external hardware. First thing typed on the phone itself:
+`fastfetch`, which now reports "GPU: Qualcomm Turnip Adreno (TM) 710".
+
+Two kernel bugs surfaced along the way, both now fixed in
+`kernel-new-drivers/simpledrm.c`: the 5.10 `drm_fb_memcpy_dstclip()` helper
+trusts both the damage clip (can point past the framebuffer) and the
+framebuffer pitch (sway's pixman renderer pads strides; the helper used it
+for the *destination* too, drifting off the end of the scanout mapping —
+kernel oops with the DRM modeset lock held, recoverable only by reboot).
+The blit now clamps the clip and walks src/dst with separate pitches.
+
+---
+
 ## Key operational learnings
 
 - **Modules must match the exact Image** (`MODVERSIONS=y` +
@@ -443,7 +479,8 @@ shows up in real shader work at real resolutions.)
 
 - **OTG keyboard**: host mode works in software; blocked on hardware — a
   powered OTG hub is needed because the SM7435's OTG 5 V boost goes through
-  pmic_glink → ADSP charger firmware that we don't run.
+  pmic_glink → ADSP charger firmware that we don't run. *(Much less urgent
+  now that the touchscreen + on-screen keyboard work.)*
 - **GPU-accelerated compositor**: turnip/zink work now (see the GPU section
   above), but sway still renders with pixman/llvmpipe — wlroots' GLES renderer
   wants EGL+GBM (needs a real DRM driver) and its Vulkan renderer wants

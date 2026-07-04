@@ -65,6 +65,21 @@ for m in drivers/clk/qcom/gpucc-parrot.ko \
     sudo install -Dm644 "$MNT/lib/modules/$KV/kernel/$m" \
          "$MNT/lib/modules/$KV/gpu/$(basename "$m")"
 done
+# Touchscreen stack (Goodix GT9916S on geni SPI) — same blacklist+service
+# pattern; garnet-touch.service loads these in order (gpi BEFORE spi-msm-geni,
+# the SE is GSI-DMA-only). Firmware comes from script 11.
+for m in drivers/dma/qcom/gpi.ko \
+         drivers/platform/msm/msm-geni-se.ko \
+         drivers/spi/spi-msm-geni.ko \
+         drivers/pinctrl/qcom/pinctrl-spmi-gpio.ko \
+         drivers/soc/qcom/panel_event_notifier.ko \
+         drivers/input/touchscreen/xiaomi/xiaomi_touch.ko \
+         drivers/input/touchscreen/goodix_berlin_driver/goodix_core.ko \
+         drivers/input/touchscreen/focaltech_3683g/focaltech_3683g.ko; do
+  [ -f "$MNT/lib/modules/$KV/kernel/$m" ] && \
+    sudo install -Dm644 "$MNT/lib/modules/$KV/kernel/$m" \
+         "$MNT/lib/modules/$KV/touch/$(basename "$m")"
+done
 
 echo "[*] laying down our services + configs from rootfs/"
 sudo cp -av "$HERE/rootfs/." "$MNT/"
@@ -78,6 +93,7 @@ sudo chroot "$MNT" /bin/bash -c '
   systemctl enable systemd-timesyncd
   systemctl enable garnet-rtc-restore.service garnet-rtc-save.timer garnet-rtc-save-shutdown.service
   systemctl enable garnet-gpu.service         # no-op unless the gpu DTB is booted
+  systemctl enable garnet-touch.service       # Goodix GT9916S touchscreen
   systemctl enable wpa_supplicant@wlan0
   systemd-machine-id-setup
 ' || echo "[=] chroot step needs binfmt/qemu-aarch64 on the host if it failed here"

@@ -63,5 +63,9 @@ mount -o ro /dev/mapper/vendor_a "$MNT" 2>/dev/null || mount -t erofs -o ro /dev
 echo "[*] copying a710 firmware to $DEST"
 cp -v "$MNT"/firmware/a710_sqe.fw "$MNT"/firmware/gmu_gen70000.bin \
       "$MNT"/firmware/a710_zap.* "$DEST/"
+
+echo "[*] copying touchscreen firmware (Goodix GT9916S / CSOT panel + Focaltech spares)"
+cp -v "$MNT"/firmware/goodix_firmware_CSOT.bin "$MNT"/firmware/goodix_cfg_group_CSOT.bin \
+      "$MNT"/firmware/focaltech_ts_fw_*.bin "$DEST/"
 sync
 echo "[+] done"

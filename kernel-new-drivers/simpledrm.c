@@ -439,11 +439,44 @@ static int simpledrm_blit_rect(struct simpledrm_device *sdev,
 	uint32_t fb_format = fb->format->format;
 	uint32_t dst_format = sdev->format->format;
 	void __iomem *dst = sdev->screen_base;
+	/* Clamp to both the fb and the hw scanout. 5.10's damage path can
+	 * hand us a clip past the fb edge (seen live: full-width clip with
+	 * y1 == vdisplay from a sway session -> memcpy_toio past the end of
+	 * the ioremap = oops with the modeset lock held). The 5.10 blit
+	 * helpers trust the clip completely, so distrust it here.
+	 */
+	struct drm_rect bounds = {
+		.x1 = 0,
+		.y1 = 0,
+		.x2 = min_t(int, fb->width, sdev->mode.hdisplay),
+		.y2 = min_t(int, fb->height, sdev->mode.vdisplay),
+	};
+
+	if (!drm_rect_intersect(clip, &bounds))
+		return 0;
 
 	if (dst_format == fb_format ||
 	    (dst_format == DRM_FORMAT_XRGB8888 && fb_format == DRM_FORMAT_ARGB8888) ||
 	    (dst_format == DRM_FORMAT_ARGB8888 && fb_format == DRM_FORMAT_XRGB8888)) {
-		drm_fb_memcpy_dstclip(dst, vmap, fb, clip);
+		/* NOT drm_fb_memcpy_dstclip(): 5.10's version advances the
+		 * destination by fb->pitches[0]. Client buffers with a pitch
+		 * different from the hw stride (sway/pixman allocates padded
+		 * strides) then drift off the end of the scanout mapping —
+		 * second live oops of the day. Walk the lines with separate
+		 * pitches for src (fb) and dst (hw).
+		 */
+		unsigned int cpp = fb->format->cpp[0];
+		size_t len = drm_rect_width(clip) * cpp;
+		unsigned int y;
+		void *src = vmap + clip->y1 * fb->pitches[0] + clip->x1 * cpp;
+		void __iomem *dst_line = dst + clip->y1 * sdev->pitch +
+					 clip->x1 * cpp;
+
+		for (y = clip->y1; y < clip->y2; y++) {
+			memcpy_toio(dst_line, src, len);
+			src += fb->pitches[0];
+			dst_line += sdev->pitch;
+		}
 		return 0;
 	}
 	if (dst_format == DRM_FORMAT_RGB565 && fb_format == DRM_FORMAT_XRGB8888) {
