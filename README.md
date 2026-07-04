@@ -30,7 +30,7 @@ booting phone. If you get stuck, the entire debugging saga is preserved in
 | 6 | USB **host mode** — xhci comes up, a keyboard enumerates. Software done; needs a **powered OTG hub** because the phone can't source 5 V | 🚧 |
 | 7 | **Desktop on the phone screen** — X11 + i3 on efifb, and a backported **simpledrm** giving `/dev/dri/card0` → **sway (Wayland)** | ✅ |
 | 8 | **GPU acceleration** — the Adreno 710 executes Vulkan via **turnip on KGSL**, and **OpenGL 4.6 via zink**; glxgears runs GPU-rendered on the phone screen under Xorg | ✅ |
-| 9 | **Touchscreen + on-screen keyboard** — Goodix GT9916S multitouch (10-point) via geni-SPI, sway sees it through libinput, **squeekboard** for typing. The phone is usable standalone — no OTG keyboard needed | ✅ |
+| 9 | **Touchscreen + on-screen keyboard** — Goodix GT9916S multitouch (10-point) via geni-SPI, sway sees it through libinput, **squeekboard** toggled by Volume-Up. The phone is usable standalone — no OTG keyboard needed | ✅ |
 
 A few hardware facts to orient you: garnet is an A/B device, Mu-Silicium lives
 on **slot B** (`boot_b`), and the kernel is LineageOS's downstream
@@ -435,6 +435,41 @@ Result: `goodix_ts` on `/dev/input/event1`, 10-point multitouch at the full
 **squeekboard** gives a proper on-screen keyboard, so the phone is usable
 with zero external hardware. First thing typed on the phone itself:
 `fastfetch`, which now reports "GPU: Qualcomm Turnip Adreno (TM) 710".
+
+### Showing the keyboard — Volume-Up, not auto-show
+
+squeekboard's automatic show-on-focus is unreliable here, and chasing it
+turned up two real gotchas worth writing down:
+
+- **The dbus-bus leak.** Launching sway with `runuser -u alarm` from a root
+  shell leaks root's `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/0/bus`
+  into the session, so squeekboard registers `sm.puri.OSK0` on *root's* bus
+  and nothing on the alarm user bus can reach it. `garnet-sway` (in
+  `rootfs/usr/local/bin/`) forces the right bus. This is also what made the
+  auto-show signalling flaky.
+- **The empty layout.** squeekboard reads the letters layout from
+  `org.gnome.desktop.input-sources sources`; on a non-GNOME system that key
+  is empty ("No system layout present") and squeekboard has nothing to show.
+  The sway config sets it: `gsettings set … sources "[('xkb', 'us')]"`.
+
+Even with both fixed, auto-show stays finicky because the Wayland **seat
+advertises a keyboard capability** (`capabilities: 6` = keyboard+touch) — the
+"keyboard" being the volume button and the touch panel's own `KEY_POWER`/
+`KEY_WAKEUP` gesture keys — and squeekboard suppresses the OSK when it thinks
+a hardware keyboard is present. Rather than fight that, the keyboard is bound
+to a hardware button. The **power button is PMIC-managed and never reaches
+Linux as an input device**, so the only usable button is **Volume-Up**
+(`KEY_VOLUMEUP` → `XF86AudioRaiseVolume`, on `gpio-keys`):
+
+```
+# ~/.config/sway/config
+exec gsettings set org.gnome.desktop.input-sources sources "[('xkb', 'us')]"
+exec squeekboard
+bindsym --no-repeat XF86AudioRaiseVolume exec /usr/local/bin/toggle-osk
+```
+
+`toggle-osk` just flips squeekboard's `Visible` property over dbus. Tap
+Volume-Up to summon the keyboard, tap again to dismiss it.
 
 Two kernel bugs surfaced along the way, both now fixed in
 `kernel-new-drivers/simpledrm.c`: the 5.10 `drm_fb_memcpy_dstclip()` helper

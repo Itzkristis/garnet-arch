@@ -1,0 +1,11 @@
+#!/bin/sh
+# Launch sway as the alarm user with a clean session environment. The common
+# trap: starting sway via runuser/su from a root shell leaks root DBUS/XDG env
+# into the session, so squeekboard registers sm.puri.OSK0 on root bus and the
+# Volume-Up toggle can not reach it. Force the alarm user bus.
+export XDG_RUNTIME_DIR=/run/user/1000
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+export WLR_BACKENDS=drm,libinput
+export WLR_RENDERER_ALLOW_SOFTWARE=1
+export XDG_SESSION_TYPE=wayland
+exec sway "$@"
