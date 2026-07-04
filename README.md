@@ -440,7 +440,12 @@ The blit now clamps the clip and walks src/dst with separate pitches.
   `VK_EXT_physical_device_drm`, which a KGSL-backed turnip can't offer. Next
   ideas: patch wlroots' Vulkan renderer to accept a DRM-less device, or keep
   the compositor on CPU and run the heavy apps on GL-via-zink / Vulkan
-  directly (works today under Xorg).
+  directly (works today under Xorg). **Currently experimenting** with an X11
+  window manager (i3 on fbdev Xorg): there GL apps are accelerated via zink,
+  and `picom` may let the compositor itself render on the GPU — something sway
+  can't do here. Trade-off under evaluation is input (touch works via
+  `xf86-input-libinput`, but the squeekboard OSK is Wayland-only, so an X11
+  OSK like `onboard`/`florence` is needed).
 - **Audio**: nothing plays yet. The SM7435 audio path is the Qualcomm
   ASoC/LPASS + q6 (ADSP) stack with the vendor `snd-soc-*` modules — likely the
   highest-value next milestone (turns this into a media-capable device), and
