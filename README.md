@@ -4,8 +4,7 @@ Everything here exists so that **anyone with their own garnet** can do the same
 thing from clean upstream sources: the kernel patches, two new drivers, the
 kernel config, the init scripts, the exact module load order, the systemd
 services, and a numbered script pipeline that takes you from `git clone` to a
-booting phone. If you get stuck, the entire debugging saga is preserved in
-[`docs/`](docs/) as a lab notebook — every dead end included.
+booting phone.
 
 > **Before anything else, read [`PREREQUISITES.md`](PREREQUISITES.md).** It
 > covers the unlocked-bootloader requirement, host packages, and — important —
@@ -67,7 +66,6 @@ github/
 ├── initramfs/                    ← the real /init scripts + load-order.list + module list
 ├── rootfs/                       ← systemd services, network/wpa/blacklist configs,
 │                                   WCNSS ini (the Wi-Fi fix), USB-gadget script
-├── docs/                         ← LAB-NOTEBOOK-{status,handoff}.md (the full debugging log)
 └── dist-manifests/               ← sha256 manifest of the build outputs
 ```
 
@@ -466,12 +464,11 @@ patch is verified to apply cleanly), and the **`init-*.sh`,
 `load-order.list`, and module list** were unpacked from the actual working
 initramfs images. A few pieces are **faithful reconstructions** from the lab
 notebook because the live copies only exist on the phone — each one carries a
-`RECONSTRUCTED — verify against docs/` header:
+`RECONSTRUCTED` header:
 `rootfs/etc/systemd/system/garnet-*.service` and
 `rootfs/usr/local/sbin/garnet-usb-gadget-up.sh`. The `07`/`08`/`09` scripts
 encode the documented procedures but haven't been re-run end-to-end from a
-clean host — treat them as a well-signposted path rather than a certified one,
-and cross-check `docs/` when a step surprises you.
+clean host — treat them as a well-signposted path rather than a certified one.
 
 ## Upstream sources
 
